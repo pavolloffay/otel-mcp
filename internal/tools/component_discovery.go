@@ -12,6 +12,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/service"
 )
 
@@ -91,95 +92,27 @@ type GetComponentSchemaInput struct {
 	ComponentType string `json:"component_type" jsonschema:"Component type (e.g. 'otlp', 'batch', 'debug'),required"`
 }
 
-type FieldSchema struct {
-	Name     string         `json:"name"`
-	Type     string         `json:"type"`
-	Required bool           `json:"required,omitempty"`
-	Doc      string         `json:"doc,omitempty"`
-	Fields   map[string]any `json:"fields,omitempty"`
-}
-
 type GetComponentSchemaOutput struct {
-	ComponentType string                 `json:"component_type"`
-	Kind          string                 `json:"kind"`
-	ConfigType    string                 `json:"config_type"`
-	Fields        map[string]FieldSchema `json:"fields"`
+	ComponentType string         `json:"component_type"`
+	Kind          string         `json:"kind"`
+	ConfigType    string         `json:"config_type"`
+	Schema        map[string]any `json:"schema"`
 }
 
-// reflectConfigSchema uses reflection to extract the structure of a config object
-func reflectConfigSchema(cfg component.Config) map[string]FieldSchema {
-	fields := make(map[string]FieldSchema)
-
+// marshalConfigSchema uses confmap to properly encode a config object with all defaults and tag handling
+func marshalConfigSchema(cfg component.Config) (map[string]any, error) {
 	if cfg == nil {
-		return fields
+		return make(map[string]any), nil
 	}
 
-	val := reflect.ValueOf(cfg)
-	// Dereference pointer if necessary
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
+	// Use collector's own encoding logic
+	conf := confmap.New()
+	if err := conf.Marshal(cfg); err != nil {
+		return nil, fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if val.Kind() != reflect.Struct {
-		return fields
-	}
-
-	typ := val.Type()
-	for i := 0; i < typ.NumField(); i++ {
-		field := typ.Field(i)
-
-		// Skip unexported fields
-		if !field.IsExported() {
-			continue
-		}
-
-		fieldSchema := FieldSchema{
-			Name: field.Name,
-			Type: field.Type.String(),
-		}
-
-		// Check for required tag
-		if tag := field.Tag.Get("validate"); tag != "" {
-			if tag == "required" {
-				fieldSchema.Required = true
-			}
-		}
-
-		// Check for mapstructure tag (commonly used in collector configs)
-		if tag := field.Tag.Get("mapstructure"); tag != "" && tag != "-" {
-			fieldSchema.Name = tag
-		}
-
-		// If it's a struct, recursively reflect its fields
-		fieldType := field.Type
-		if fieldType.Kind() == reflect.Ptr {
-			fieldType = fieldType.Elem()
-		}
-		if fieldType.Kind() == reflect.Struct {
-			// Create a zero value instance to reflect nested fields
-			nestedVal := reflect.New(fieldType).Elem()
-			fieldSchema.Fields = make(map[string]any)
-			nestedType := nestedVal.Type()
-			for j := 0; j < nestedType.NumField(); j++ {
-				nestedField := nestedType.Field(j)
-				if !nestedField.IsExported() {
-					continue
-				}
-				nestedFieldSchema := map[string]any{
-					"name": nestedField.Name,
-					"type": nestedField.Type.String(),
-				}
-				if tag := nestedField.Tag.Get("mapstructure"); tag != "" && tag != "-" {
-					nestedFieldSchema["name"] = tag
-				}
-				fieldSchema.Fields[nestedFieldSchema["name"].(string)] = nestedFieldSchema
-			}
-		}
-
-		fields[fieldSchema.Name] = fieldSchema
-	}
-
-	return fields
+	// Returns properly structured map with defaults
+	return conf.ToStringMap(), nil
 }
 
 // RegisterGetComponentSchema registers the get_component_schema tool
@@ -222,8 +155,11 @@ func RegisterGetComponentSchema(server *mcp.Server, ext ExtensionContext) {
 			return nil, GetComponentSchemaOutput{}, errors.New("factory returned nil default config")
 		}
 
-		// Reflect on the config structure
-		fields := reflectConfigSchema(defaultCfg)
+		// Marshal config to map using collector's encoding logic
+		schema, err := marshalConfigSchema(defaultCfg)
+		if err != nil {
+			return nil, GetComponentSchemaOutput{}, fmt.Errorf("failed to marshal config schema: %w", err)
+		}
 
 		// Get the config type name
 		cfgType := reflect.TypeOf(defaultCfg)
@@ -233,7 +169,7 @@ func RegisterGetComponentSchema(server *mcp.Server, ext ExtensionContext) {
 			ComponentType: input.ComponentType,
 			Kind:          input.Kind,
 			ConfigType:    configTypeName,
-			Fields:        fields,
+			Schema:        schema,
 		}, nil
 	})
 }
