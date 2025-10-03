@@ -1,0 +1,38 @@
+# Git files
+.git
+.gitignore
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Build artifacts
+dist
+_build
+output
+
+# Documentation
+README.md
+docs
+
+# Test files
+*_test.go
+test
+tests
+
+# CI/CD
+.github
+
+# Local config overrides
+config-local.yaml
+*.local.yaml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker files
+docker-compose.override.yml

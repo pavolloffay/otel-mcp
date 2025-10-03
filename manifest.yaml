@@ -1,0 +1,26 @@
+dist:
+  name: otelcol-mcp
+  description: OpenTelemetry Collector with MCP extension
+  output_path: ./dist
+  otelcol_version: 1.42.0
+
+extensions:
+  - gomod: github.com/austinparker/otel-mcp v0.1.0
+    import: github.com/austinparker/otel-mcp/extension/mcpextension
+    path: .
+
+connectors:
+  - gomod: github.com/austinparker/otel-mcp v0.1.0
+    import: github.com/austinparker/otel-mcp/connector/mcpconnector
+    path: .
+
+# Include some basic components for testing
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.136.0
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.136.0
+
+exporters:
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.136.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.136.0

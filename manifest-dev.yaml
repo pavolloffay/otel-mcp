@@ -1,0 +1,86 @@
+dist:
+  name: otelcol-mcp-dev
+  description: OpenTelemetry Collector with MCP for Local Development
+  version: 0.136.0
+  otel_version: 0.136.0
+  output_path: ./dist
+  build_tags: "grpcnotrace"
+
+extensions:
+  # MCP extension for AI-powered collector introspection
+  - gomod: github.com/austinparker/otel-mcp v0.1.0
+    import: github.com/austinparker/otel-mcp/extension/mcpextension
+    path: .
+  # Core extensions
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.136.0
+
+exporters:
+  # OTLP exporters for forwarding
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.136.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.136.0
+  # Debug and file exporters for local testing
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.136.0
+  # Prometheus for metrics visualization
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.136.0
+  # Jaeger and Zipkin for traces
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/zipkinexporter v0.136.0
+
+processors:
+  # Essential processors
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.136.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.136.0
+  # Attribute manipulation
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.136.0
+  # Filtering and sampling
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/probabilisticsamplerprocessor v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor v0.136.0
+  # Resource detection for local environment
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.136.0
+
+receivers:
+  # OTLP receivers (gRPC and HTTP)
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.136.0
+  # Host metrics for Mac monitoring
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.136.0
+  # File-based receivers for logs
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.136.0
+  # Prometheus metrics scraping
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusremotewritereceiver v0.136.0
+  # Jaeger and Zipkin for trace ingestion
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/zipkinreceiver v0.136.0
+  # Docker stats for containerized apps
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/dockerstatsreceiver v0.136.0
+  # HTTP check for service monitoring
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/httpcheckreceiver v0.136.0
+
+connectors:
+  # MCP connector for telemetry buffering
+  - gomod: github.com/austinparker/otel-mcp v0.1.0
+    import: github.com/austinparker/otel-mcp/connector/mcpconnector
+    path: .
+  # Useful connectors
+  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/spanmetricsconnector v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/servicegraphconnector v0.136.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector v0.136.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.42.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.42.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v1.42.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.42.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.42.0
+
+replaces:
+  # see https://github.com/openshift/api/pull/1515
+  - github.com/openshift/api => github.com/openshift/api v0.0.0-20230726162818-81f778f3b3ec
