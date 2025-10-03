@@ -5,7 +5,10 @@ package mcpextension
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -38,6 +41,7 @@ type mcpExtension struct {
 
 	// MCP server
 	server     *mcp.Server
+	mu         sync.Mutex
 	httpServer *http.Server
 	cancelFunc context.CancelFunc
 
@@ -113,6 +117,14 @@ func (e *mcpExtension) Start(_ context.Context, host component.Host) error {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", handler)
 
+	// Create listener to verify binding before returning from Start
+	listener, err := net.Listen("tcp", e.config.Endpoint)
+	if err != nil {
+		return fmt.Errorf("failed to bind MCP HTTP server to %s: %w", e.config.Endpoint, err)
+	}
+
+	// Protect httpServer and cancelFunc with mutex
+	e.mu.Lock()
 	e.httpServer = &http.Server{
 		Addr:              e.config.Endpoint,
 		Handler:           mux,
@@ -122,10 +134,12 @@ func (e *mcpExtension) Start(_ context.Context, host component.Host) error {
 	// Start HTTP server in background
 	_, cancel := context.WithCancel(context.Background())
 	e.cancelFunc = cancel
+	httpServer := e.httpServer
+	e.mu.Unlock()
 
 	go func() {
 		e.logger.Info("Starting MCP HTTP server", zap.String("endpoint", e.config.Endpoint))
-		if err := e.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 			e.logger.Error("MCP HTTP server error", zap.Error(err))
 		}
 	}()
@@ -137,15 +151,21 @@ func (e *mcpExtension) Start(_ context.Context, host component.Host) error {
 func (e *mcpExtension) Shutdown(ctx context.Context) error {
 	e.logger.Info("Shutting down MCP extension")
 
+	// Get httpServer and cancelFunc under lock
+	e.mu.Lock()
+	httpServer := e.httpServer
+	cancelFunc := e.cancelFunc
+	e.mu.Unlock()
+
 	// Stop HTTP server gracefully
-	if e.httpServer != nil {
-		if err := e.httpServer.Shutdown(ctx); err != nil {
+	if httpServer != nil {
+		if err := httpServer.Shutdown(ctx); err != nil {
 			e.logger.Error("Error shutting down MCP HTTP server", zap.Error(err))
 		}
 	}
 
-	if e.cancelFunc != nil {
-		e.cancelFunc()
+	if cancelFunc != nil {
+		cancelFunc()
 	}
 	return nil
 }

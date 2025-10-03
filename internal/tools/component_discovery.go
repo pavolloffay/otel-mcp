@@ -194,20 +194,9 @@ func RegisterGetComponentSchema(server *mcp.Server, ext ExtensionContext) {
 		},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input GetComponentSchemaInput) (*mcp.CallToolResult, GetComponentSchemaOutput, error) { //nolint:revive // ctx unused but kept for interface compatibility
 		// Validate kind
-		var compKind component.Kind
-		switch input.Kind {
-		case "receiver":
-			compKind = component.KindReceiver
-		case "processor":
-			compKind = component.KindProcessor
-		case "exporter":
-			compKind = component.KindExporter
-		case "connector":
-			compKind = component.KindConnector
-		case "extension":
-			compKind = component.KindExtension
-		default:
-			return nil, GetComponentSchemaOutput{}, fmt.Errorf("invalid component kind: %s (must be one of: receiver, processor, exporter, connector, extension)", input.Kind)
+		compKind, err := parseComponentKind(input.Kind)
+		if err != nil {
+			return nil, GetComponentSchemaOutput{}, err
 		}
 
 		// Parse component type
@@ -274,20 +263,9 @@ func RegisterGetFactoryInfo(server *mcp.Server, ext ExtensionContext) {
 		},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input GetFactoryInfoInput) (*mcp.CallToolResult, GetFactoryInfoOutput, error) { //nolint:revive // ctx unused but kept for interface compatibility
 		// Validate kind
-		var compKind component.Kind
-		switch input.Kind {
-		case "receiver":
-			compKind = component.KindReceiver
-		case "processor":
-			compKind = component.KindProcessor
-		case "exporter":
-			compKind = component.KindExporter
-		case "connector":
-			compKind = component.KindConnector
-		case "extension":
-			compKind = component.KindExtension
-		default:
-			return nil, GetFactoryInfoOutput{}, fmt.Errorf("invalid component kind: %s (must be one of: receiver, processor, exporter, connector, extension)", input.Kind)
+		compKind, err := parseComponentKind(input.Kind)
+		if err != nil {
+			return nil, GetFactoryInfoOutput{}, err
 		}
 
 		// Parse component type

@@ -219,14 +219,11 @@ func TestMCPConnectorCloningOptimization(t *testing.T) {
 	require.NoError(t, conn.Start(ctx, host))
 	t.Cleanup(func() { require.NoError(t, conn.Shutdown(ctx)) })
 
-	// Verify cloning optimization flag
-	assert.False(t, conn.nextTracesMutates, "should detect non-mutating consumer")
-
-	// Test consuming traces
+	// Test consuming traces - should always clone to prevent upstream mutations
 	td := ptrace.NewTraces()
 	require.NoError(t, conn.ConsumeTraces(ctx, td))
 
-	// Both should have same reference since no mutation
+	// Verify data was buffered
 	assert.Len(t, buffer.traces, 1)
 }
 
@@ -250,14 +247,11 @@ func TestMCPConnectorWithMutatingConsumer(t *testing.T) {
 	require.NoError(t, conn.Start(ctx, host))
 	t.Cleanup(func() { require.NoError(t, conn.Shutdown(ctx)) })
 
-	// Verify cloning is enabled for mutating consumer
-	assert.True(t, conn.nextTracesMutates, "should detect mutating consumer")
-
-	// Test consuming traces
+	// Test consuming traces - should always clone to prevent upstream mutations
 	td := ptrace.NewTraces()
 	require.NoError(t, conn.ConsumeTraces(ctx, td))
 
-	// Should have cloned data
+	// Verify data was buffered
 	assert.Len(t, buffer.traces, 1)
 }
 

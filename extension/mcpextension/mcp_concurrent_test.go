@@ -121,7 +121,7 @@ func TestConcurrentConfigUpdateAndToolCalls(t *testing.T) {
 					},
 				},
 			})
-			mockCtx.conf = newConf
+			mockCtx.SetConf(newConf)
 		}
 	}()
 
@@ -185,7 +185,7 @@ func TestConcurrentBufferOperations(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
 			td := ptrace.NewTraces()
-			mockCtx.recentTraces = append(mockCtx.recentTraces, td)
+			mockCtx.AddTrace(td)
 		}
 	}()
 

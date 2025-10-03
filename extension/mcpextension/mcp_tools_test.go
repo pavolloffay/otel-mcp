@@ -5,6 +5,7 @@ package mcpextension
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -24,6 +25,7 @@ import (
 
 // mockExtensionContext implements tools.ExtensionContext for testing
 type mockExtensionContext struct {
+	mu               sync.RWMutex
 	conf             *confmap.Conf
 	moduleInfos      *service.ModuleInfos
 	componentFactory hostcapabilities.ComponentFactory
@@ -36,6 +38,8 @@ type mockExtensionContext struct {
 }
 
 func (m *mockExtensionContext) GetCollectorConf() *confmap.Conf {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.conf
 }
 
@@ -60,6 +64,8 @@ func (m *mockExtensionContext) GetComponentFactory() hostcapabilities.ComponentF
 }
 
 func (m *mockExtensionContext) GetRecentTraces(limit, offset int) []ptrace.Traces {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if offset >= len(m.recentTraces) {
 		return nil
 	}
@@ -82,6 +88,8 @@ func (m *mockExtensionContext) GetRecentMetrics(limit, offset int) []pmetric.Met
 }
 
 func (m *mockExtensionContext) GetRecentLogs(limit, offset int) []plog.Logs {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if offset >= len(m.recentLogs) {
 		return nil
 	}
@@ -90,6 +98,19 @@ func (m *mockExtensionContext) GetRecentLogs(limit, offset int) []plog.Logs {
 		end = len(m.recentLogs)
 	}
 	return m.recentLogs[offset:end]
+}
+
+// Helper methods for thread-safe writes in concurrent tests
+func (m *mockExtensionContext) SetConf(conf *confmap.Conf) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.conf = conf
+}
+
+func (m *mockExtensionContext) AddTrace(td ptrace.Traces) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.recentTraces = append(m.recentTraces, td)
 }
 
 func newMockExtensionContext() *mockExtensionContext {

@@ -506,10 +506,12 @@ func RegisterFindRelatedTelemetry(server *mcp.Server, ext ExtensionContext) {
 	})
 }
 
-// Helper function to truncate strings
+// Helper function to truncate strings in a UTF-8 safe manner
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	// Convert to runes to handle multi-byte UTF-8 characters correctly
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }

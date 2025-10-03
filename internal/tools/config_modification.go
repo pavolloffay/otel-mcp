@@ -118,17 +118,13 @@ func RegisterAddComponent(server *mcp.Server, ext ExtensionContext) {
 		}
 
 		// Validate kind
-		validKinds := map[string]string{
-			"receiver":  "receivers",
-			"processor": "processors",
-			"exporter":  "exporters",
-			"connector": "connectors",
-			"extension": "extensions",
+		if _, err := parseComponentKind(input.Kind); err != nil {
+			return nil, AddComponentOutput{}, err
 		}
 
-		section, ok := validKinds[input.Kind]
+		section, ok := validKindsMap()[input.Kind]
 		if !ok {
-			return nil, AddComponentOutput{}, fmt.Errorf("invalid component kind: %s (must be one of: receiver, processor, exporter, connector, extension)", input.Kind)
+			return nil, AddComponentOutput{}, fmt.Errorf("invalid component kind: %s", input.Kind)
 		}
 
 		// Check if component already exists
@@ -183,15 +179,11 @@ func RegisterRemoveComponent(server *mcp.Server, ext ExtensionContext) {
 		}
 
 		// Validate kind
-		validKinds := map[string]string{
-			"receiver":  "receivers",
-			"processor": "processors",
-			"exporter":  "exporters",
-			"connector": "connectors",
-			"extension": "extensions",
+		if _, err := parseComponentKind(input.Kind); err != nil {
+			return nil, RemoveComponentOutput{}, err
 		}
 
-		section, ok := validKinds[input.Kind]
+		section, ok := validKindsMap()[input.Kind]
 		if !ok {
 			return nil, RemoveComponentOutput{}, fmt.Errorf("invalid component kind: %s", input.Kind)
 		}
@@ -202,8 +194,25 @@ func RegisterRemoveComponent(server *mcp.Server, ext ExtensionContext) {
 			return nil, RemoveComponentOutput{}, NewConfigError("remove_component", input.ComponentID, ErrComponentNotFound)
 		}
 
-		// Check which pipelines use this component
 		affectedPipelines := []string{}
+		validation := []string{}
+
+		// For extensions, check service::extensions
+		if input.Kind == "extension" {
+			serviceExtensions := conf.Get("service::extensions")
+			if serviceExtensions != nil {
+				if extList, ok := serviceExtensions.([]any); ok {
+					for _, item := range extList {
+						if itemStr, ok := item.(string); ok && itemStr == input.ComponentID {
+							validation = append(validation, fmt.Sprintf("Warning: Extension %s is referenced in service.extensions", input.ComponentID))
+							break
+						}
+					}
+				}
+			}
+		}
+
+		// Check which pipelines use this component
 		pipelinesConf := conf.Get("service::pipelines")
 		if pipelinesConf != nil {
 			if pipelines, ok := pipelinesConf.(map[string]any); ok {
@@ -225,7 +234,9 @@ func RegisterRemoveComponent(server *mcp.Server, ext ExtensionContext) {
 			}
 		}
 
-		validation := []string{fmt.Sprintf("Component %s/%s exists and can be removed", input.Kind, input.ComponentID)}
+		if len(validation) == 0 {
+			validation = append(validation, fmt.Sprintf("Component %s/%s exists and can be removed", input.Kind, input.ComponentID))
+		}
 		if len(affectedPipelines) > 0 {
 			validation = append(validation, fmt.Sprintf("Warning: Component is used in %d pipeline(s)", len(affectedPipelines)))
 		}

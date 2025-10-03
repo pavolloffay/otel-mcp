@@ -68,10 +68,10 @@ func TestMCPExtensionPortAlreadyInUse(t *testing.T) {
 	ext := newMCPExtension(cfg, extensiontest.NewNopSettings(component.MustNewType("mcp")))
 	require.NotNil(t, ext)
 
-	// Note: Start doesn't return an error for port conflicts since the HTTP server starts in a goroutine
-	// The error would be logged instead
-	require.NoError(t, ext.Start(context.Background(), componenttest.NewNopHost()))
-	t.Cleanup(func() { require.NoError(t, ext.Shutdown(context.Background())) })
+	// Start should now fail immediately with port conflict error
+	err = ext.Start(context.Background(), componenttest.NewNopHost())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to bind MCP HTTP server")
 }
 
 func TestMCPExtensionMultipleStarts(t *testing.T) {
@@ -88,9 +88,10 @@ func TestMCPExtensionMultipleStarts(t *testing.T) {
 	require.NoError(t, ext.Start(context.Background(), componenttest.NewNopHost()))
 	t.Cleanup(func() { require.NoError(t, ext.Shutdown(context.Background())) })
 
-	// Note: Current implementation allows multiple starts (creates new servers)
-	// This test verifies that calling Start multiple times doesn't panic
-	require.NoError(t, ext.Start(context.Background(), componenttest.NewNopHost()))
+	// Second Start should fail with port already in use error
+	err := ext.Start(context.Background(), componenttest.NewNopHost())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to bind MCP HTTP server")
 }
 
 func TestMCPExtensionMultipleShutdowns(t *testing.T) {
