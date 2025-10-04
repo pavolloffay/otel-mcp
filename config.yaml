@@ -52,9 +52,9 @@ extensions:
   # MCP extension for AI-powered collector management
   mcp:
     endpoint: localhost:9999
-    traces_buffer_size: 100
-    metrics_buffer_size: 100
-    logs_buffer_size: 100
+    traces_buffer_size: 10000
+    metrics_buffer_size: 10000
+    logs_buffer_size: 10000
 
   # Health check endpoint
   health_check:

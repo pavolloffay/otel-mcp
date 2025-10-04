@@ -11,39 +11,40 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// NOTE: Configuration modification is read-only in this implementation.
+// NOTE: Configuration validation is read-only in this implementation.
 // The MCP extension can inspect and validate configuration but cannot
 // persist changes to disk or trigger collector reloads. This would require:
 // - File system write access to the config file
 // - Ability to trigger collector reload/restart
 // - Proper validation of the entire configuration graph
 //
-// For now, these tools provide inspection and validation capabilities only.
+// These tools provide configuration validation capabilities only.
 
-type UpdateConfigInput struct {
-	Section string         `json:"section" jsonschema:"Configuration section to update (receivers, processors, exporters, etc.),required"`
-	Config  map[string]any `json:"config" jsonschema:"New configuration for the section,required"`
+type ValidateConfigSectionInput struct {
+	Section string         `json:"section" jsonschema:"Configuration section to validate (receivers, processors, exporters, etc.),required"`
+	Config  map[string]any `json:"config" jsonschema:"Configuration for the section to validate,required"`
 }
 
-type UpdateConfigOutput struct {
+type ValidateConfigSectionOutput struct {
+	Valid      bool     `json:"valid"`
 	Message    string   `json:"message"`
 	Validation []string `json:"validation,omitempty"`
 }
 
-// RegisterUpdateConfig registers the update_config tool
-func RegisterUpdateConfig(server *mcp.Server, ext ExtensionContext) {
-	mcp.AddTool[UpdateConfigInput, UpdateConfigOutput](server, &mcp.Tool{
-		Name:        "update_config",
-		Description: "Validate configuration changes (read-only - cannot persist to disk)",
+// RegisterValidateConfigSection registers the validate_config_section tool
+func RegisterValidateConfigSection(server *mcp.Server, ext ExtensionContext) {
+	mcp.AddTool[ValidateConfigSectionInput, ValidateConfigSectionOutput](server, &mcp.Tool{
+		Name:        "validate_config_section",
+		Description: "Validate a configuration section structure (receivers, processors, exporters, etc.)",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:   true,
 			IdempotentHint: true,
 			OpenWorldHint:  boolPtr(false),
 		},
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input UpdateConfigInput) (*mcp.CallToolResult, UpdateConfigOutput, error) { //nolint:revive // ctx unused but kept for interface compatibility
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input ValidateConfigSectionInput) (*mcp.CallToolResult, ValidateConfigSectionOutput, error) { //nolint:revive // ctx unused but kept for interface compatibility
 		conf := ext.GetCollectorConf()
 		if conf == nil {
-			return nil, UpdateConfigOutput{}, NewConfigError("update_config", "", ErrConfigNotAvailable)
+			return nil, ValidateConfigSectionOutput{}, NewConfigError("validate_config_section", "", ErrConfigNotAvailable)
 		}
 
 		// Validate the section exists in valid config sections
@@ -57,7 +58,7 @@ func RegisterUpdateConfig(server *mcp.Server, ext ExtensionContext) {
 		}
 
 		if !validSections[input.Section] {
-			return nil, UpdateConfigOutput{}, NewConfigError("update_config", input.Section, ErrSectionNotFound)
+			return nil, ValidateConfigSectionOutput{}, NewConfigError("validate_config_section", input.Section, ErrSectionNotFound)
 		}
 
 		// Validate basic structure
@@ -77,13 +78,15 @@ func RegisterUpdateConfig(server *mcp.Server, ext ExtensionContext) {
 		}
 
 		if len(validationIssues) > 0 {
-			return nil, UpdateConfigOutput{
+			return nil, ValidateConfigSectionOutput{
+				Valid:      false,
 				Message:    "Configuration validation failed",
 				Validation: validationIssues,
 			}, fmt.Errorf("configuration validation failed: %v", validationIssues)
 		}
 
-		return nil, UpdateConfigOutput{
+		return nil, ValidateConfigSectionOutput{
+			Valid:      true,
 			Message:    "Configuration structure is valid. Note: Changes are not persisted - this is a read-only validation.",
 			Validation: []string{"Configuration structure validated successfully"},
 		}, nil

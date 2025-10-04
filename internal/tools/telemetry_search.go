@@ -7,9 +7,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 type SearchTracesInput struct {
@@ -132,8 +137,8 @@ type SearchLogsInput struct {
 }
 
 type SearchLogsOutput struct {
-	LogCount int      `json:"log_count"`
-	Logs     []string `json:"logs"`
+	LogCount int    `json:"log_count"`
+	Markdown string `json:"markdown"`
 }
 
 // RegisterSearchLogs registers the search_logs tool
@@ -153,8 +158,12 @@ func RegisterSearchLogs(server *mcp.Server, ext ExtensionContext) {
 		}
 
 		logs := ext.GetRecentLogs(1000, 0) // Get a large batch to search
-		logRecords := []string{}
+		var sb strings.Builder
 		logCount := 0
+
+		// Table header
+		sb.WriteString("| Time | Severity | Service | Body | TraceID | Attributes |\n")
+		sb.WriteString("|------|----------|---------|------|---------|------------|\n")
 
 		for _, ld := range logs {
 			if logCount >= limit {
@@ -208,19 +217,49 @@ func RegisterSearchLogs(server *mcp.Server, ext ExtensionContext) {
 						}
 
 						logCount++
-						logSummary := fmt.Sprintf("service=%s severity=%s body=%s",
-							serviceName,
+
+						// Format timestamp
+						timestamp := time.Unix(0, int64(lr.Timestamp()))
+						timeStr := timestamp.Format("15:04:05.000")
+
+						// Get trace ID if present
+						traceID := lr.TraceID().String()
+						traceIDShort := "-"
+						if traceID != "" && traceID != "00000000000000000000000000000000" {
+							traceIDShort = traceID[:8] + "..."
+						}
+
+						// Format attributes
+						attrs := formatAttributes(lr.Attributes())
+						if attrs == "" {
+							attrs = "-"
+						} else if len(attrs) > 40 {
+							attrs = attrs[:40] + "..."
+						}
+
+						// Truncate body
+						bodyTrunc := truncateString(body, 50)
+
+						sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s |\n",
+							timeStr,
 							severityText,
-							truncateString(body, 80))
-						logRecords = append(logRecords, logSummary)
+							serviceName,
+							bodyTrunc,
+							traceIDShort,
+							attrs))
 					}
 				}
 			}
 		}
 
+		markdown := sb.String()
+		if logCount == 0 {
+			markdown = "No logs found matching the criteria"
+		}
+
 		return nil, SearchLogsOutput{
 			LogCount: logCount,
-			Logs:     logRecords,
+			Markdown: markdown,
 		}, nil
 	})
 }
@@ -232,8 +271,8 @@ type SearchMetricsInput struct {
 }
 
 type SearchMetricsOutput struct {
-	MetricCount int      `json:"metric_count"`
-	Metrics     []string `json:"metrics"`
+	MetricCount int    `json:"metric_count"`
+	Markdown    string `json:"markdown"`
 }
 
 // RegisterSearchMetrics registers the search_metrics tool
@@ -253,8 +292,12 @@ func RegisterSearchMetrics(server *mcp.Server, ext ExtensionContext) {
 		}
 
 		metricsData := ext.GetRecentMetrics(1000, 0) // Get a large batch to search
-		metrics := []string{}
+		var sb strings.Builder
 		metricCount := 0
+
+		// Table header
+		sb.WriteString("| Metric | Type | Service | Unit | Value | Attributes |\n")
+		sb.WriteString("|--------|------|---------|------|-------|------------|\n")
 
 		for _, md := range metricsData {
 			if metricCount >= limit {
@@ -302,20 +345,70 @@ func RegisterSearchMetrics(server *mcp.Server, ext ExtensionContext) {
 						}
 
 						metricCount++
-						metricSummary := fmt.Sprintf("service=%s name=%s type=%s unit=%s",
-							serviceName,
+
+						// Extract value summary based on type
+						valueStr := "-"
+						attrStr := "-"
+
+						switch metric.Type() {
+						case pmetric.MetricTypeSum:
+							sum := metric.Sum()
+							if sum.DataPoints().Len() > 0 {
+								dp := sum.DataPoints().At(0)
+								valueStr = fmt.Sprintf("%.2f", dp.DoubleValue())
+								attrStr = formatAttributes(dp.Attributes())
+							}
+						case pmetric.MetricTypeGauge:
+							gauge := metric.Gauge()
+							if gauge.DataPoints().Len() > 0 {
+								dp := gauge.DataPoints().At(0)
+								valueStr = fmt.Sprintf("%.2f", dp.DoubleValue())
+								attrStr = formatAttributes(dp.Attributes())
+							}
+						case pmetric.MetricTypeHistogram:
+							hist := metric.Histogram()
+							if hist.DataPoints().Len() > 0 {
+								dp := hist.DataPoints().At(0)
+								valueStr = fmt.Sprintf("count=%d sum=%.2f", dp.Count(), dp.Sum())
+								attrStr = formatAttributes(dp.Attributes())
+							}
+						case pmetric.MetricTypeSummary:
+							summ := metric.Summary()
+							if summ.DataPoints().Len() > 0 {
+								dp := summ.DataPoints().At(0)
+								valueStr = fmt.Sprintf("count=%d sum=%.2f", dp.Count(), dp.Sum())
+								attrStr = formatAttributes(dp.Attributes())
+							}
+						}
+
+						// Truncate attributes
+						if len(attrStr) > 50 {
+							attrStr = attrStr[:50] + "..."
+						}
+						if attrStr == "" {
+							attrStr = "-"
+						}
+
+						sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s |\n",
 							metricName,
 							metric.Type().String(),
-							metric.Unit())
-						metrics = append(metrics, metricSummary)
+							serviceName,
+							metric.Unit(),
+							valueStr,
+							attrStr))
 					}
 				}
 			}
 		}
 
+		markdown := sb.String()
+		if metricCount == 0 {
+			markdown = "No metrics found matching the criteria"
+		}
+
 		return nil, SearchMetricsOutput{
 			MetricCount: metricCount,
-			Metrics:     metrics,
+			Markdown:    markdown,
 		}, nil
 	})
 }
@@ -325,10 +418,23 @@ type GetTraceByIDInput struct {
 }
 
 type GetTraceByIDOutput struct {
-	TraceID   string   `json:"trace_id"`
-	SpanCount int      `json:"span_count"`
-	Spans     []string `json:"spans"`
-	Found     bool     `json:"found"`
+	TraceID   string `json:"trace_id"`
+	SpanCount int    `json:"span_count"`
+	Markdown  string `json:"markdown"`
+	Found     bool   `json:"found"`
+}
+
+// spanInfo holds span data for waterfall rendering
+type spanInfo struct {
+	spanID     string
+	parentID   string
+	name       string
+	startTime  time.Time
+	endTime    time.Time
+	status     string
+	kind       string
+	attributes map[string]string
+	children   []*spanInfo
 }
 
 // RegisterGetTraceByID registers the get_trace_by_id tool
@@ -347,9 +453,11 @@ func RegisterGetTraceByID(server *mcp.Server, ext ExtensionContext) {
 		}
 
 		traces := ext.GetRecentTraces(1000, 0) // Get all recent traces
-		spans := []string{}
+		spanMap := make(map[string]*spanInfo)
+		var traceStartTime time.Time
 		found := false
 
+		// Collect all spans for this trace
 		for _, td := range traces {
 			// Check for context cancellation
 			if ctx.Err() != nil {
@@ -358,11 +466,6 @@ func RegisterGetTraceByID(server *mcp.Server, ext ExtensionContext) {
 
 			for i := 0; i < td.ResourceSpans().Len(); i++ {
 				rs := td.ResourceSpans().At(i)
-				serviceName := "unknown"
-				if sn, ok := rs.Resource().Attributes().Get("service.name"); ok {
-					serviceName = sn.AsString()
-				}
-
 				for j := 0; j < rs.ScopeSpans().Len(); j++ {
 					ss := rs.ScopeSpans().At(j)
 					for k := 0; k < ss.Spans().Len(); k++ {
@@ -372,25 +475,39 @@ func RegisterGetTraceByID(server *mcp.Server, ext ExtensionContext) {
 						// Match exact trace ID
 						if traceID == input.TraceID {
 							found = true
-							spanDetails := fmt.Sprintf("span_id=%s parent=%s service=%s name=%s kind=%s status=%s",
-								span.SpanID().String(),
-								span.ParentSpanID().String(),
-								serviceName,
-								span.Name(),
-								span.Kind().String(),
-								span.Status().Code().String())
-							spans = append(spans, spanDetails)
+							info := extractSpanInfo(span)
+							spanMap[info.spanID] = info
+
+							// Track earliest start time as trace start
+							if traceStartTime.IsZero() || info.startTime.Before(traceStartTime) {
+								traceStartTime = info.startTime
+							}
 						}
 					}
 				}
 			}
 		}
 
+		if !found {
+			return nil, GetTraceByIDOutput{
+				TraceID:   input.TraceID,
+				SpanCount: 0,
+				Markdown:  "Trace not found",
+				Found:     false,
+			}, nil
+		}
+
+		// Build tree structure
+		rootSpans := buildSpanTree(spanMap)
+
+		// Render as markdown waterfall
+		markdown := renderTraceWaterfall(rootSpans, traceStartTime)
+
 		return nil, GetTraceByIDOutput{
 			TraceID:   input.TraceID,
-			SpanCount: len(spans),
-			Spans:     spans,
-			Found:     found,
+			SpanCount: len(spanMap),
+			Markdown:  markdown,
+			Found:     true,
 		}, nil
 	})
 }
@@ -514,4 +631,186 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return string(runes[:maxLen]) + "..."
+}
+
+// extractSpanInfo extracts relevant span information for waterfall rendering
+func extractSpanInfo(span ptrace.Span) *spanInfo {
+	info := &spanInfo{
+		spanID:     span.SpanID().String(),
+		parentID:   span.ParentSpanID().String(),
+		name:       span.Name(),
+		startTime:  time.Unix(0, int64(span.StartTimestamp())),
+		endTime:    time.Unix(0, int64(span.EndTimestamp())),
+		status:     span.Status().Code().String(),
+		kind:       span.Kind().String(),
+		attributes: make(map[string]string),
+		children:   []*spanInfo{},
+	}
+
+	// Extract key attributes (limit to avoid overwhelming output)
+	span.Attributes().Range(func(k string, v pcommon.Value) bool {
+		if len(info.attributes) < 5 { // Limit to 5 key attributes
+			info.attributes[k] = v.AsString()
+		}
+		return true
+	})
+
+	return info
+}
+
+// buildSpanTree builds a tree structure from flat span map
+func buildSpanTree(spanMap map[string]*spanInfo) []*spanInfo {
+	roots := []*spanInfo{}
+
+	// First pass: link children to parents
+	for _, span := range spanMap {
+		if span.parentID == "" || span.parentID == "0000000000000000" {
+			// Root span (no parent)
+			roots = append(roots, span)
+		} else {
+			// Child span - add to parent's children
+			if parent, ok := spanMap[span.parentID]; ok {
+				parent.children = append(parent.children, span)
+			} else {
+				// Parent not found, treat as root
+				roots = append(roots, span)
+			}
+		}
+	}
+
+	// Sort roots by start time
+	sort.Slice(roots, func(i, j int) bool {
+		return roots[i].startTime.Before(roots[j].startTime)
+	})
+
+	// Sort children by start time recursively
+	for _, root := range roots {
+		sortChildren(root)
+	}
+
+	return roots
+}
+
+// sortChildren recursively sorts children by start time
+func sortChildren(span *spanInfo) {
+	sort.Slice(span.children, func(i, j int) bool {
+		return span.children[i].startTime.Before(span.children[j].startTime)
+	})
+
+	for _, child := range span.children {
+		sortChildren(child)
+	}
+}
+
+// renderTraceWaterfall renders spans as a markdown table with tree structure
+func renderTraceWaterfall(roots []*spanInfo, traceStart time.Time) string {
+	var sb strings.Builder
+
+	// Table header
+	sb.WriteString("| Span | ID | Duration | Start | Status | Attributes |\n")
+	sb.WriteString("|------|-----|----------|-------|--------|------------|\n")
+
+	// Render each root and its children
+	for _, root := range roots {
+		renderSpanRow(&sb, root, traceStart, "", true)
+	}
+
+	return sb.String()
+}
+
+// renderSpanRow renders a single span row with tree formatting
+// prefix contains only the indentation (│ and spaces from ancestors)
+// isLast indicates if this is the last child of its parent
+func renderSpanRow(sb *strings.Builder, span *spanInfo, traceStart time.Time, prefix string, isLast bool) {
+	// Calculate timing
+	duration := span.endTime.Sub(span.startTime)
+	startOffset := span.startTime.Sub(traceStart)
+
+	// Format duration
+	durationStr := formatDuration(duration)
+	startStr := fmt.Sprintf("%.3fs", startOffset.Seconds())
+
+	// Truncate span ID for display
+	spanIDShort := span.spanID
+	if len(spanIDShort) > 8 {
+		spanIDShort = spanIDShort[:8]
+	}
+
+	// Format attributes
+	attrs := formatAttributesMap(span.attributes, 50)
+
+	// Build the tree character for this span
+	treeChar := ""
+	if prefix != "" {
+		if isLast {
+			treeChar = "└─ "
+		} else {
+			treeChar = "├─ "
+		}
+	}
+
+	// Write row
+	fmt.Fprintf(sb, "| %s%s%s | %s | %s | %s | %s | %s |\n",
+		prefix,
+		treeChar,
+		span.name,
+		spanIDShort,
+		durationStr,
+		startStr,
+		span.status,
+		attrs)
+
+	// Render children with updated indentation
+	for i, child := range span.children {
+		isChildLast := i == len(span.children)-1
+
+		// Build child's prefix (indentation only, no tree character)
+		childPrefix := prefix
+		if prefix != "" || len(span.children) > 0 {
+			// Add continuation or space based on whether this span has more siblings
+			if isLast {
+				childPrefix += "   "
+			} else {
+				childPrefix += "│  "
+			}
+		}
+
+		renderSpanRow(sb, child, traceStart, childPrefix, isChildLast)
+	}
+}
+
+// formatDuration formats duration in a human-readable way
+func formatDuration(d time.Duration) string {
+	switch {
+	case d < time.Microsecond:
+		return fmt.Sprintf("%dns", d.Nanoseconds())
+	case d < time.Millisecond:
+		return fmt.Sprintf("%.1fµs", float64(d.Nanoseconds())/1000)
+	case d < time.Second:
+		return fmt.Sprintf("%.1fms", float64(d.Microseconds())/1000)
+	default:
+		return fmt.Sprintf("%.2fs", d.Seconds())
+	}
+}
+
+// formatAttributesMap formats attribute map as compact string
+func formatAttributesMap(attrs map[string]string, maxLen int) string {
+	if len(attrs) == 0 {
+		return "-"
+	}
+
+	var parts []string
+	for k, v := range attrs {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	// Sort for consistent output
+	sort.Strings(parts)
+
+	result := strings.Join(parts, " ")
+	if len(result) > maxLen {
+		result = result[:maxLen] + "..."
+	}
+
+	return result
 }

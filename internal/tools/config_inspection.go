@@ -53,7 +53,7 @@ type GetComponentConfigInput struct {
 func RegisterGetComponentConfig(server *mcp.Server, ext ExtensionContext) {
 	mcp.AddTool[GetComponentConfigInput, any](server, &mcp.Tool{
 		Name:        "get_component_config",
-		Description: "Get configuration for a specific component instance. Returns JSON with ALL defaults expanded. When writing configs, omit default values to keep YAML concise (e.g., timeout: 0, root_path: \"\", enabled: false can be omitted).",
+		Description: "Get configuration for a specific component instance. Returns the effective configuration as reported by the collector.",
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:   true,
 			IdempotentHint: true,
@@ -65,14 +65,16 @@ func RegisterGetComponentConfig(server *mcp.Server, ext ExtensionContext) {
 			return nil, nil, NewConfigError("get_component_config", "", ErrConfigNotAvailable)
 		}
 
-		// Map kind to config section
 		section := input.Kind + "s"
-		componentConfig := conf.Get(section + "::" + input.ComponentID)
-		if componentConfig == nil {
+		subConf, err := conf.Sub(section + "::" + input.ComponentID)
+		if err != nil {
+			return nil, nil, NewConfigError("get_component_config", input.ComponentID, ErrComponentNotFound)
+		}
+		if subConf == nil {
 			return nil, nil, NewConfigError("get_component_config", input.ComponentID, ErrComponentNotFound)
 		}
 
-		return nil, componentConfig, nil
+		return nil, subConf.ToStringMap(), nil
 	})
 }
 

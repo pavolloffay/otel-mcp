@@ -108,10 +108,13 @@ func (e *mcpExtension) Start(_ context.Context, host component.Host) error {
 		return err
 	}
 
-	// Create StreamableHTTP handler for HTTP transport
+	// Create StreamableHTTP handler for HTTP transport with stateless mode
+	// Stateless mode allows the collector to restart without breaking MCP clients
 	handler := mcp.NewStreamableHTTPHandler(func(_ *http.Request) *mcp.Server {
 		return server
-	}, nil)
+	}, &mcp.StreamableHTTPOptions{
+		Stateless: true, // Don't validate Mcp-Session-Id, create temporary sessions per request
+	})
 
 	// Create HTTP server
 	mux := http.NewServeMux()
