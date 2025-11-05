@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/collector/extension/extensiontest"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	"github.com/austinparker/otel-mcp/internal/tools"
+	"github.com/pavolloffay/otel-mcp/internal/tools"
 )
 
 func TestConcurrentMCPToolCalls(t *testing.T) {

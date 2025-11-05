@@ -1,4 +1,4 @@
-module github.com/austinparker/otel-mcp
+module github.com/pavolloffay/otel-mcp
 
 go 1.24.0
 

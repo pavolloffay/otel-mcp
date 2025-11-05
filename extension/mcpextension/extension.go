@@ -24,8 +24,8 @@ import (
 	"go.opentelemetry.io/collector/service/hostcapabilities"
 	"go.uber.org/zap"
 
-	"github.com/austinparker/otel-mcp/internal/buffer"
-	"github.com/austinparker/otel-mcp/internal/tools"
+	"github.com/pavolloffay/otel-mcp/internal/buffer"
+	"github.com/pavolloffay/otel-mcp/internal/tools"
 )
 
 var (

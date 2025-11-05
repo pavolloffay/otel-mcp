@@ -4,7 +4,7 @@
 package mcpextension
 
 import (
-	"github.com/austinparker/otel-mcp/internal/tools"
+	"github.com/pavolloffay/otel-mcp/internal/tools"
 )
 
 // registerTools registers all MCP tools with the server
